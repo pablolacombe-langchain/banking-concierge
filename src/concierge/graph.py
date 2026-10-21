@@ -4,7 +4,7 @@ A custom LangGraph StateGraph implementing the classic agent loop:
 
     START -> agent -> (tools? -> agent)* -> END
 
-Exported as `graph` for LangSmith / LangGraph CLI deployment.
+Exported as `graph` for local callers and `deployment_graph` for deployment.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ import os
 
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableBinding, RunnableConfig
+from langchain_core.runnables.config import merge_configs
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -76,7 +78,17 @@ def _build_graph():
         {"tools": "tools", END: END},
     )
     builder.add_edge("tools", "agent")
-    return builder.compile()
+    return builder.compile(name="banking_concierge")
 
 
-graph = _build_graph()
+_compiled_graph = _build_graph()
+graph: RunnableBinding = RunnableBinding(
+    bound=_compiled_graph,
+    config={"metadata": {"environment": os.getenv("APP_ENV", "development")}},
+)
+
+
+def deployment_graph(config: RunnableConfig):
+    """Merge trace defaults into the server's invocation config."""
+    config["metadata"] = merge_configs(graph.config, config).get("metadata", {})
+    return _compiled_graph.with_config(config)

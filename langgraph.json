@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "agent": "./src/concierge/graph.py:graph"
+    "agent": "./src/concierge/graph.py:deployment_graph"
   },
   "http": {
     "app": "./src/concierge/app.py:app"

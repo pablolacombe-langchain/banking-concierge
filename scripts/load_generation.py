@@ -618,7 +618,11 @@ async def _run_local(
     async def run_one(idx: int, prompt: Prompt) -> None:
         thread_id = f"loadgen-{uuid.uuid4()}"
         tags = ["loadgen", f"category:{prompt.category}"]
-        config = {"configurable": {"thread_id": thread_id}, "tags": tags}
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "tags": tags,
+            "metadata": {"environment": "loadgen", "scenario": prompt.category},
+        }
         async with sem:
             messages: list[dict] = []
             try:
@@ -672,6 +676,10 @@ async def _run_remote(
                         assistant,
                         input={"messages": [{"role": "human", "content": turn}]},
                         config={"tags": tags},
+                        metadata={
+                            "environment": "loadgen",
+                            "scenario": prompt.category,
+                        },
                         max_attempts=max_attempts,
                         max_backoff=max_backoff,
                     )
