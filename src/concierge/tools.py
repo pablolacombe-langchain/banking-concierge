@@ -13,6 +13,8 @@ to cluster after the load generator runs:
 
 from __future__ import annotations
 
+import re
+
 from langchain_core.tools import tool
 
 from concierge.mock_data import (
@@ -42,60 +44,56 @@ def search_banking_docs(query: str, k: int = 4) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
+class TransactionLimitError(ValueError):
+    """A transaction count outside the supported range."""
+
+
+def _validate_customer_id(customer_id: str) -> None:
+    """Require an exact customer ID before accessing customer records."""
+    if not re.fullmatch(r"CUST-[0-9]{4}", customer_id):
+        raise ValueError(
+            "Customer IDs must be CUST- followed by exactly four digits. "
+            "Ask the representative for the exact customer ID; do not construct, "
+            "pad, guess, or enumerate IDs. This format failure does not establish "
+            "whether the customer exists."
+        )
+
+
 @tool
 def account_lookup(customer_id: str) -> dict:
-    """Look up account information.
-
-    Returns the customer's name and a list of their account IDs, account
-    types, and balances. Use this when the user wants details about an
-    account.
-    """
+    """Look up accounts using the exact CUST-#### ID supplied by the representative or a tool for the intended customer; ask if missing or invalid, never construct, pad, guess, or enumerate IDs."""
     if customer_id.startswith("X"):
         raise RuntimeError(
             "Customer record service is temporarily unavailable. Try again later."
         )
+    _validate_customer_id(customer_id)
     customer = CUSTOMERS.get(customer_id)
     if customer is None:
-        raise ValueError(
-            f"No customer found with ID {customer_id!r}. "
-            "Customer IDs are in the format CUST-####."
-        )
+        raise ValueError(f"No customer found with ID {customer_id!r}.")
     return dict(customer)
 
 
 @tool
 def recent_transactions(customer_id: str, limit: int = 5) -> list[dict]:
-    """Retrieve a customer's most recent transactions.
-
-    Args:
-        customer_id: The customer ID (e.g. CUST-0001).
-        limit: Optional number of transactions to return.
-    """
+    """Retrieve up to limit transactions (default 5, maximum 50) using the exact CUST-#### ID supplied by the representative or a tool for the intended customer; ask if missing or invalid, never construct, pad, guess, or enumerate IDs; disclose caps and report actual returned and listed counts."""
+    _validate_customer_id(customer_id)
     if limit <= 0:
-        raise ValueError("limit must be positive")
+        raise TransactionLimitError("limit must be positive")
     if limit > 50:
-        raise ValueError(
-            f"limit {limit} exceeds the maximum of 50. Pick a smaller number."
-        )
+        raise TransactionLimitError(f"limit {limit} exceeds the maximum of 50.")
     if customer_id not in CUSTOMERS:
-        raise ValueError(
-            f"No customer found with ID {customer_id!r}. "
-            "Customer IDs are in the format CUST-####."
-        )
+        raise ValueError(f"No customer found with ID {customer_id!r}.")
     txs = TRANSACTIONS.get(customer_id, [])
     return [dict(t) for t in txs[:limit]]
 
 
 @tool
 def find_branch(zip_code: str) -> dict:
-    """Find a Meridian National branch.
-
-    Args:
-        zip_code: A 5-digit U.S. ZIP code.
-    """
-    if not (isinstance(zip_code, str) and len(zip_code) == 5 and zip_code.isdigit()):
+    """Find a branch using the representative's exact five-digit U.S. ZIP; ask for clarification if missing or invalid, never invent or pad it."""
+    if not re.fullmatch(r"[0-9]{5}", zip_code):
         raise ValueError(
-            f"zip_code must be a 5-digit U.S. ZIP code. Got {zip_code!r}."
+            "zip_code must be a five-digit U.S. ZIP code. "
+            "Ask the representative for the exact ZIP; do not invent or pad it."
         )
     branch = find_branch_by_zip(zip_code)
     if branch is None:

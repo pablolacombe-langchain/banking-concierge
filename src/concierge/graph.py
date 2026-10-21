@@ -19,7 +19,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from concierge.context import get_prompt
 from concierge.state import ConciergeState
-from concierge.tools import TOOLS
+from concierge.tools import TOOLS, TransactionLimitError
 
 load_dotenv(override=True)
 
@@ -64,10 +64,27 @@ def agent_node(state: ConciergeState) -> dict:
     }
 
 
+def _handle_tool_error(error: Exception) -> str:
+    """Preserve tool failures and give guidance appropriate to the failed input."""
+    if isinstance(error, TransactionLimitError):
+        return (
+            f"Error: {error} "
+            "Use a positive limit of at most 50; disclose any cap or change to "
+            "the requested limit and report actual returned and listed counts. "
+            "Do not change the customer ID."
+        )
+    return (
+        f"Error: {error} "
+        "Do not guess, construct, pad, or enumerate identifiers, or retry with "
+        "altered identifiers. For lookup or format failures, ask the representative "
+        "for the correct input. A format failure does not mean the customer is absent."
+    )
+
+
 def _build_graph():
     builder = StateGraph(ConciergeState)
     builder.add_node("agent", agent_node)
-    builder.add_node("tools", ToolNode(TOOLS, handle_tool_errors=True))
+    builder.add_node("tools", ToolNode(TOOLS, handle_tool_errors=_handle_tool_error))
 
     builder.add_edge(START, "agent")
     builder.add_conditional_edges(

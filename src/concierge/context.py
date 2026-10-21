@@ -12,7 +12,8 @@ Engine should look here to find where the agent's context comes from — but the
 prompt itself is edited in the Context Hub UI, not in this repo.
 ``concierge.prompts.SYSTEM_PROMPT`` is only the seed pushed to the hub and the
 offline fallback used when the hub is unreachable or the tag doesn't exist yet;
-it is not the runtime source of truth.
+it is not the runtime source of truth. Local tool input and result rules are
+always applied to the loaded prompt, including existing Hub versions.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from __future__ import annotations
 import os
 
 from langsmith import Client
+
+from concierge.prompts import SYSTEM_PROMPT, TOOL_ARGUMENT_RULES
 
 CONTEXT_HUB_REPO = "banking-concierge-agent"
 
@@ -29,22 +32,16 @@ CONTEXT_HUB_VERSION = os.getenv("CONTEXT_HUB_VERSION", "production")
 
 
 def get_prompt() -> str:
-    """Return the concierge system prompt, pulled from LangSmith Context Hub.
-
-    Resolves the commit tagged ``CONTEXT_HUB_VERSION`` (``production`` by
-    default). Falls back to the seed in ``concierge.prompts.SYSTEM_PROMPT`` when
-    the hub is unreachable or the tag/repo doesn't exist yet — run
-    ``python -m scripts.setup_context_hub`` to seed and promote it.
-    """
+    """Load the hub prompt with local tool rules, or fall back to the seed."""
     try:
         version = CONTEXT_HUB_VERSION or None
         agent = Client().pull_agent(CONTEXT_HUB_REPO, version=version)
         content = getattr(agent.files["AGENTS.md"], "content", "")
         if content:
+            if TOOL_ARGUMENT_RULES not in content:
+                content += "\n\n" + TOOL_ARGUMENT_RULES
             return content
     except Exception:
         pass
-
-    from concierge.prompts import SYSTEM_PROMPT
 
     return SYSTEM_PROMPT
